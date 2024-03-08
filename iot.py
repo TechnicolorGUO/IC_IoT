@@ -47,12 +47,12 @@ class iot:
         self.df['timing'] = self.df['hour'].apply(self.hours2timing)
 
 
-    def show_holo(self):
+    def show_density(self):
         # Create a HoloViews Scatter plot for each column
-        hum_plot = hv.Distribution(self.df['hum']).opts(color='blue')
-        snd_plot = hv.Distribution(self.df['snd']).opts(color='green')
-        temp_plot = hv.Distribution(self.df['temp']).opts(color='orange')
-        light_plot = hv.Distribution(self.df['light']).opts(color='red')
+        hum_plot = hv.Distribution(self.df['hum'],label = "humidity").opts(color='blue')
+        snd_plot = hv.Distribution(self.df['snd'], label = "sound").opts(color='green')
+        temp_plot = hv.Distribution(self.df['temp'], label = "temperature").opts(color='orange')
+        light_plot = hv.Distribution(self.df['light'], label = "light").opts(color='red')
 
         # Set the options for the combined plot
         combined_plot = (hum_plot * snd_plot * temp_plot * light_plot).opts(opts.Distribution(xlabel = 'units', ylabel = 'density', title = 'Distribution',
@@ -60,6 +60,7 @@ class iot:
         
         # Display the combined plot
         hv.save(combined_plot, 'holo.png', fmt='png')
+        hv.save(combined_plot, 'holo.html', fmt='html')
 
 
 
@@ -109,6 +110,7 @@ class iot:
 
             img = (hu+sn+li+te).opts(opts.Curve(xlabel="Weekday", width=400, height=300,tools=['hover'],show_grid=True,fontsize={'title':10})).opts(shared_axes=False)
             hv.save(img, 'byweekday.png', fmt='png')
+            hv.save(img, 'byweekday.html', fmt='html')
         elif mode == 3:
             hu = hv.Curve(self.groupByMonth('hum')).opts(title="Hum", color="red", ylabel="Unit")
             sn = hv.Curve(self.groupByMonth('snd')).opts(title="snd", color="blue", ylabel="Unit")
@@ -117,6 +119,7 @@ class iot:
 
             img = (hu+sn+li+te).opts(opts.Curve(xlabel="Month", width=400, height=300,tools=['hover'],show_grid=True,fontsize={'title':10})).opts(shared_axes=False)
             hv.save(img, 'bymonth.png', fmt='png')
+            hv.save(img, 'bymonth.html', fmt='html')
 
     def show_bydate(self, startdate, enddate):
         hu = hv.Curve(self.groupByDate('hum', startdate, enddate)).opts(title="Hum", color="red", ylabel="Unit")
@@ -126,6 +129,7 @@ class iot:
 
         img = (hu+sn+li+te).opts(opts.Curve(xlabel="Date", width=400, height=300,tools=['hover'],show_grid=True,fontsize={'title':10})).opts(shared_axes=False)
         hv.save(img, 'bydate.png', fmt='png')
+        hv.save(img, 'bydate.html', fmt='html')
 
         
     def lgbm_train(self,cols=['hum','snd','light','temp'],trg='hum',train_ratio=0.75,valid_ratio=0.05,test_ratio=0.2):
@@ -170,7 +174,7 @@ class iot:
 
     def lgbm_predict_Occ(self, X_predict):
         result = pd.DataFrame()
-        result['Occupancy'] = self.model.predict(X_predict, num_iteration=self.model.best_iteration)
+        result['Occupancy'] = self.model.predict(X_predict[['hum', 'snd', 'light', 'temp']], num_iteration=self.model.best_iteration)
         result.index = X_predict.index
         alertflag = False
         for i in range(len(result)):
@@ -178,7 +182,7 @@ class iot:
                 alertflag = True
                 break
         return alertflag
-
+ 
     
     def lgbm_plot(self, trg = 'hum', lgmbForecast_df = None,portion=0.1):
         # Calculate mean absolute error
@@ -199,17 +203,24 @@ class iot:
 
         # Render the plot
         hv.render(combined_plot)
-        hv.save(combined_plot, 'plot.png', fmt='png')
+        hv.save(combined_plot, 'lgbm_plot.png', fmt='png')
+        hv.save(combined_plot, 'lgbm_plot.html', fmt='html')
 
 if __name__ == "__main__":
     p = iot("testdata.csv")
     p.load()
+    p.show_density()
+    p.show_bytiming(1)
+    p.show_bytiming(2)
+    p.show_bytiming(3)
     lgbmForecast_df, model, x_train = p.lgbm_train(cols=['hum', 'snd', 'light', 'temp','Occupancy'], trg = 'Occupancy', train_ratio=0.8,valid_ratio=0.05,test_ratio=0.15)
 
     # explainer = shap.TreeExplainer(model=model,feature_perturbation='tree_path_dependent')
     # shap_values = explainer.shap_values(X=x_train)
     p.lgbm_plot(trg = 'Occupancy', lgmbForecast_df = lgbmForecast_df)
+
+    # print(p.lgbm_predict_Occ(p._lgbm_df[['hum', 'snd', 'light', 'temp','Occupancy']]))
     # Calculate mean absolute error
     # p.load()
-    # # p.show_holo()
+    # p.show_holo()
     # p.show_bydate('2023-04-20', '2023-04-27')      
