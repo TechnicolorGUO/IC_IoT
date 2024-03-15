@@ -5,9 +5,9 @@ from holoviews import opts
 import hvplot.pandas
 from sklearn.calibration import LabelEncoder
 import lightgbm as lgb 
-import shap
+# import shap
 from sklearn.metrics import mean_absolute_error
-shap.initjs()
+# shap.initjs()
 
 class iot:
     def __init__(self, file_path):
