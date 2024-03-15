@@ -14,6 +14,9 @@ class iot:
         self.df = pd.read_csv(file_path,low_memory=False)
         self._lgbm_df = None
         self.model = None
+        self.train_ratio = 0.8
+        self.valid_ratio = 0.1
+        self.predict_ratio = 0.1
 
 
     def hours2timing(self, x):
@@ -137,9 +140,9 @@ class iot:
         self.df.index = pd.to_datetime(self.df.index)
         self.df.info()
 
-        _lgbm_df = self.df.select_dtypes(include=[np.number]).resample('H').mean()
-        _lgbm_df['weekday'] =   LabelEncoder().fit_transform(pd.Series(_lgbm_df.index).apply(lambda x : x.day_name())).astype(np.int8)
-        _lgbm_df['timing'] = LabelEncoder().fit_transform(_lgbm_df['hour'].apply(self.hours2timing)).astype(np.int8)
+        # _lgbm_df = self.df.select_dtypes(include=[np.number]).resample('T').mean()
+        _lgbm_df = self.df.select_dtypes(include=[np.number])
+
         self._lgbm_df = _lgbm_df
             #make dataframe for training
         lgbm_df = _lgbm_df[cols]
@@ -177,14 +180,32 @@ class iot:
         result['Occupancy'] = self.model.predict(X_predict[['hum', 'snd', 'light', 'temp']], num_iteration=self.model.best_iteration)
         result.index = X_predict.index
         alertflag = False
+        alert_count = 0
+        msg = {'time':'', 'alertflag': False, 'alert_count': 0}
         for i in range(len(result)):
             if result['Occupancy'][i] > 0.5 and X_predict['Occupancy'][i] == 0:
+
                 alertflag = True
-                break
-        return alertflag
+                msg['alertflag'] = True
+                alert_count += 1
+        msg['alert_count'] = alert_count
+        msg['time'] =   str(X_predict.index[0]) + ' to ' + str(X_predict.index[-1])
+        if alertflag == True:
+            main_plot = hv.Curve(X_predict['Occupancy'], label='Occupancy').opts(color='blue') * \
+            hv.Curve(result['Occupancy'], label='predicted').opts(color='red', alpha = 0.5,title='Suspicious Activity Detected')
+        else:
+            main_plot = hv.Curve(X_predict['Occupancy'], label='Occupancy').opts(color='blue') * \
+            hv.Curve(result['Occupancy'], label='predicted').opts(color='red', title='LightGBM Result')
+        combined_plot = (main_plot.opts(legend_position='bottom')) \
+        .opts(opts.Curve(xlabel="Time", width=800, height=300, show_grid=True, tools=['hover']))
+        hv.render(combined_plot)
+        hv.save(combined_plot, 'alert.png', fmt='png')
+        hv.save(combined_plot, 'alert.html', fmt='html')
+        print(msg)
+        return msg
  
     
-    def lgbm_plot(self, trg = 'hum', lgmbForecast_df = None,portion=0.1):
+    def lgbm_plot(self, trg = 'Occupancy', lgmbForecast_df = None,portion=0.1):
         # Calculate mean absolute error
         lgbm_use_mae = mean_absolute_error(self._lgbm_df[trg][-len(lgbmForecast_df):], lgbmForecast_df[trg])
 
@@ -213,11 +234,16 @@ if __name__ == "__main__":
     p.show_bytiming(1)
     p.show_bytiming(2)
     p.show_bytiming(3)
-    lgbmForecast_df, model, x_train = p.lgbm_train(cols=['hum', 'snd', 'light', 'temp','Occupancy'], trg = 'Occupancy', train_ratio=0.8,valid_ratio=0.05,test_ratio=0.15)
+    lgbmForecast_df, model, x_train = p.lgbm_train(cols=['hum', 'snd', 'light', 'temp','Occupancy'], trg = 'Occupancy', train_ratio=p.train_ratio,valid_ratio=p.valid_ratio,test_ratio=p.predict_ratio)
 
     # explainer = shap.TreeExplainer(model=model,feature_perturbation='tree_path_dependent')
     # shap_values = explainer.shap_values(X=x_train)
     p.lgbm_plot(trg = 'Occupancy', lgmbForecast_df = lgbmForecast_df)
+    num_rows = len(p._lgbm_df)
+    num_predict = int(num_rows * p.predict_ratio)  # Compute the number of rows for 5%
+    start = num_rows - num_predict  # Compute the starting index for last 5%
+
+    p.lgbm_predict_Occ(p.df.iloc[start:][['hum', 'snd', 'light', 'temp', 'Occupancy']])
 
     # print(p.lgbm_predict_Occ(p._lgbm_df[['hum', 'snd', 'light', 'temp','Occupancy']]))
     # Calculate mean absolute error
